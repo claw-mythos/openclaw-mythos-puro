@@ -1,0 +1,1 @@
+/Users/2a/.claude/openclaw-mythos-lucrecia/bridge/gsd/agents/gsd-research-synthesizer.md

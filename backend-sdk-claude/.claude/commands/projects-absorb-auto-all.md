@@ -1,0 +1,1 @@
+/Users/2a/.claude/openclaw-mythos-lucrecia/bridge/setup/commands/projects-absorb-auto-all.md

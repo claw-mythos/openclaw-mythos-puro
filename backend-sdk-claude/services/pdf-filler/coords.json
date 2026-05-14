@@ -1,0 +1,30 @@
+{
+  "_comment": "Coordenadas em pontos PDF (origem: canto inferior esquerdo). A4 = 595.32 x 842.04. Extraídas via pdfjs do template original. Para calibrar visualmente: POST com ?debug=1.",
+  "pageSize": { "width": 595.32, "height": 842.04 },
+  "fontSize": 10,
+  "fields": {
+    "nome":            { "x": 104, "y": 722.1 },
+    "nomeSocial":      { "x": 133, "y": 704.6 },
+    "documentoId":     { "x": 195, "y": 687.1 },
+    "orgaoExpedidor":  { "x": 427, "y": 687.1 },
+    "cpf":             { "x": 93,  "y": 669.6 },
+    "nacionalidade":   { "x": 140, "y": 652.1 },
+    "naturalidade":    { "x": 410, "y": 652.1 },
+    "telefoneDDD":     { "x": 122, "y": 634.5 },
+    "telefone":        { "x": 153, "y": 634.5 },
+    "celularDDD":      { "x": 389, "y": 634.5 },
+    "celular":         { "x": 420, "y": 634.5 },
+    "email":           { "x": 104, "y": 617 },
+    "endereco":        { "x": 119, "y": 577.9 },
+    "numero":          { "x": 84,  "y": 560.4 },
+    "complemento":     { "x": 215, "y": 560.4 },
+    "cep":             { "x": 418, "y": 560.4 },
+    "uf":              { "x": 87,  "y": 542.8 },
+    "cidade":          { "x": 183, "y": 542.8 },
+    "bairro":          { "x": 406, "y": 542.8 },
+    "dataDia":         { "x": 255, "y": 440 },
+    "dataMes":         { "x": 322, "y": 440 },
+    "dataAno":         { "x": 437, "y": 440 }
+  },
+  "signature": { "x": 270, "y": 412, "width": 130 }
+}
