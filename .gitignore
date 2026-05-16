@@ -62,3 +62,7 @@ zohomail-authentication/.zoho-token.lock
 zohomail-authentication/.zoho-token.lock.d/
 zohomail-authentication/.zoho-token.tmp
 
+# Symlink local para ~/.claude/projects (transcripts de todos os projetos do
+# Lucas). NUNCA versionar — contém histórico/secrets de outros repos.
+backend-sdk-claude/symlink/projects
+

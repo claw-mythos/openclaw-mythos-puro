@@ -1,1 +1,0 @@
-/Users/2a/.claude/openclaw-mythos-lucrecia/bridge/gsd/agents/gsd-pattern-mapper.md
