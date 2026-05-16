@@ -147,12 +147,6 @@ function extractResetTime(errorMsg) {
   return null;
 }
 
-// Wrapper legado para compatibilidade com endpoint /api/claude-reset-info
-async function getClaudeResetTime() {
-  // Não spawnar processo extra — retornar null se não temos info em cache
-  return null;
-}
-
 // Initialize clients
 const sessionContextManager = new SessionContextManager();
 
@@ -619,32 +613,6 @@ app.get('/api/debug/dialogs', requireDevMode, async (req, res) => {
   }
 });
 
-// Endpoint para obter informações do próximo reset do Claude
-app.get('/api/claude-reset-info', async (req, res) => {
-  if (!_bearerAuth(req, res)) return;
-  try {
-    // Tentar obter info do timestamp real do Claude
-    const resetInfo = await getClaudeResetTime();
-    
-    if (resetInfo && resetInfo.timestamp) {
-      res.json({
-        success: true,
-        resetTimestamp: resetInfo.timestamp,
-        resetDate: resetInfo.date,
-        formatted: resetInfo.formatted
-      });
-    } else {
-      // Se não tem info do Claude, verificar se temos salvo quando o limite foi atingido
-      res.json({
-        success: false,
-        message: 'No reset information available'
-      });
-    }
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // Session management endpoints
 app.get('/api/sessions', (req, res) => {
   if (!_bearerAuth(req, res)) return;
@@ -736,146 +704,6 @@ app.post('/api/tasks/:id/retry', (req, res) => {
   res.json({ success: true, task: _sanitizeTask(task) });
 });
 
-// POST /api/translate-instagram — traduz post do Instagram e publica nas 3 contas
-app.post('/api/translate-instagram', express.json(), (req, res) => {
-  if (!_bearerAuth(req, res)) return;
-  const { url, to, message_id, rebrand_name, rebrand_handle, rebrand_photo, mode } = req.body;
-  if (!url || !to) {
-    return res.status(400).json({ error: 'url and to (LID) are required' });
-  }
-
-  // Extrair shortcode da URL pra criar pasta isolada
-  const scMatch = url.match(/\/(?:p|reel)\/([A-Za-z0-9_-]+)/);
-  const shortcode = scMatch ? scMatch[1] : `post_${Date.now()}`;
-  const workDir = `/Users/2a/.openclaw/workspace/media/jobs/${shortcode}`;
-  const scriptsDir = '/Users/2a/.openclaw/workspace/scripts';
-  const igDir = '/Users/2a/.openclaw/workspace/scripts/instagram';
-
-  // mode: "translate" (default) ou "rebrand" (só troca nome/handle/foto)
-  const isRebrand = mode === 'rebrand' && rebrand_name && rebrand_handle;
-
-  let imageStep;
-  if (isRebrand) {
-    const photoFlag = rebrand_photo ? ` --photo "${rebrand_photo}"` : '';
-    imageStep = `2. Para CADA imagem baixada em ${workDir}/images/ (ig_*_.jpg), customizar:
-cd ${scriptsDir} && uv run rebrand-image.py -i ARQUIVO_ORIGINAL -f ${workDir}/translated/NOME_ptbr.png --name "${rebrand_name}" --handle "${rebrand_handle}"${photoFlag}`;
-  } else {
-    imageStep = `2. Para CADA imagem baixada em ${workDir}/images/ (ig_*_.jpg), traduzir:
-cd ${scriptsDir} && uv run translate-image.py -i ARQUIVO_ORIGINAL -f ${workDir}/translated/NOME_ptbr.png`;
-  }
-
-  let captionStep;
-  if (isRebrand) {
-    captionStep = `3. Ler a legenda em ${workDir}/images/ig_${shortcode}_caption.txt. Substituir @ do autor por "${rebrand_handle}". Adaptar CTA.`;
-  } else {
-    captionStep = `3. Ler a legenda em ${workDir}/images/ig_${shortcode}_caption.txt e traduzir para PT-BR. Adaptar CTA (ex: "Comenta CREAR" → "Comenta claude").`;
-  }
-
-  const prompt = `${isRebrand ? 'Customiza' : 'Traduza'} o post do Instagram e publica nas 3 contas.
-
-IMPORTANTE: Todos os arquivos ficam na pasta isolada ${workDir}/
-
-0. Criar pastas:
-mkdir -p ${workDir}/images ${workDir}/translated
-
-1. Baixar imagens para a pasta isolada:
-cd ${scriptsDir} && DOWNLOAD_DIR=${workDir}/images uv run download-instagram.py "${url}"
-Se o script não suportar DOWNLOAD_DIR, mover os arquivos: mv /Users/2a/.openclaw/workspace/media/images/ig_${shortcode}* ${workDir}/images/
-
-${imageStep}
-
-${captionStep}
-
-4. Publicar nas 3 contas do Instagram (uma de cada vez, usar caminhos ABSOLUTOS das imagens em ${workDir}/translated/):
-cd ${igDir} && python3 post.py ${workDir}/translated/ig_${shortcode}_1_ptbr.png [${workDir}/translated/ig_${shortcode}_2_ptbr.png ...] "LEGENDA_TRADUZIDA"
-cd ${igDir} && python3 post.py --account agentesintegrados ${workDir}/translated/ig_${shortcode}_1_ptbr.png [...] "LEGENDA_TRADUZIDA"
-cd ${igDir} && python3 post.py --account openclawde ${workDir}/translated/ig_${shortcode}_1_ptbr.png [...] "LEGENDA_TRADUZIDA"
-(post.py converte PNG→JPG automaticamente e limita a 10 imagens)
-
-5. Gerar PDF:
-python3 -c "
-from PIL import Image; import os, glob, re
-base = '${workDir}/translated'
-files = sorted(glob.glob(os.path.join(base, 'ig_${shortcode}_*_ptbr.png')), key=lambda f: int(re.search(r'_(\\d+)_ptbr', f).group(1)))
-imgs = [Image.open(f).convert('RGB') for f in files]
-out = os.path.join(base, '${shortcode}_completo.pdf')
-imgs[0].save(out, save_all=True, append_images=imgs[1:])
-print(out)
-"
-
-6. Postar o PDF como documento/carrossel no LinkedIn:
-cd /Users/2a/.openclaw/workspace/scripts/linkedin && python3 linkedin_poster.py post "LEGENDA_TRADUZIDA" --doc ${workDir}/translated/${shortcode}_completo.pdf
-
-7. Notificar o usuário que finalizou (respondendo a mensagem original):
-curl -s -X POST http://127.0.0.1:18790/api/send-message -H "Content-Type: application/json" -d '{"to": "${to}", "text": "Finalizado ✅"${message_id ? `, "reply_to": "${message_id}"` : ''}}'`;
-
-  const task = taskRunner.createTask({
-    prompt,
-    workspace: scriptsDir,
-    tags: ['instagram', 'translate'],
-    source: 'openclaw',
-    maxTurns: 80,
-  });
-  res.json({ success: true, taskId: task.id, status: task.status });
-});
-
-// POST /api/instagram-stories — publica stories nas 3 contas
-app.post('/api/instagram-stories', express.json(), (req, res) => {
-  if (!_bearerAuth(req, res)) return;
-  const { images, text, to } = req.body;
-  if (!images || !images.length) {
-    return res.status(400).json({ error: 'images array is required' });
-  }
-
-  const igDir = '/Users/2a/.openclaw/workspace/scripts/instagram';
-  const imageList = images.map(i => `"${i}"`).join(' ');
-
-  const prompt = `Publique stories nas 3 contas do Instagram.
-
-1. Postar em todas as contas:
-cd ${igDir} && python3 story.py --all ${imageList}
-
-${to ? `2. Notificar o usuário:
-curl -s -X POST http://127.0.0.1:18790/api/send-message -H "Content-Type: application/json" -d '{"to": "${to}", "text": "Stories publicados nas 3 contas!"}'` : ''}`;
-
-  const task = taskRunner.createTask({
-    prompt,
-    workspace: igDir,
-    tags: ['instagram', 'stories'],
-    source: 'openclaw',
-    maxTurns: 20,
-  });
-  res.json({ success: true, taskId: task.id, status: task.status });
-});
-
-// POST /api/translate-image — traduz uma imagem avulsa e envia via WhatsApp
-app.post('/api/translate-image', express.json(), (req, res) => {
-  if (!_bearerAuth(req, res)) return;
-  const { file, to, lang } = req.body;
-  if (!file || !to) {
-    return res.status(400).json({ error: 'file and to (LID) are required' });
-  }
-  const targetLang = lang || 'português brasileiro';
-  const prompt = `Traduza a imagem para ${targetLang} e envie pro usuário:
-
-1. Traduzir a imagem:
-cd /Users/2a/.openclaw/workspace/scripts && uv run translate-image.py -i "${file}" -f "/Users/2a/.openclaw/workspace/media/translated/$(require('path').basename('${file}', require('path').extname('${file}'))}_ptbr.png"
-
-2. Enviar a imagem traduzida:
-curl -s -X POST http://127.0.0.1:18790/api/send-image -H "Content-Type: application/json" -d '{"to": "${to}", "file": "/Users/2a/.openclaw/workspace/media/translated/NOME_ptbr.png"}'
-
-Substituir NOME pelo nome do arquivo sem extensão.`;
-
-  const task = taskRunner.createTask({
-    prompt,
-    workspace: '/Users/2a/.openclaw/workspace/scripts',
-    tags: ['instagram', 'translate'],
-    source: 'openclaw',
-    maxTurns: 10,
-  });
-  res.json({ success: true, taskId: task.id, status: task.status });
-});
-
 // POST /api/autonomous/start — iniciar modo autônomo
 app.post('/api/autonomous/start', express.json(), (req, res) => {
   if (!_bearerAuth(req, res)) return;
@@ -909,32 +737,6 @@ function _bearerAuth(req, res) {
   }
   return true;
 }
-// ── PDF filler — preenche templates DETRAN sobrepondo texto no PDF original ──
-app.post('/api/preencher/declaracao-residencia', express.json(), async (req, res) => {
-  if (!_bearerAuth(req, res)) return;
-  try {
-    const { fillDeclaracao } = require('./services/pdf-filler/declaracao-residencia');
-    const debug = req.query.debug === '1' || req.body?.debug === true;
-    const pdfBytes = await fillDeclaracao(req.body || {}, { debug });
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="declaracao-residencia-preenchida.pdf"');
-    res.send(pdfBytes);
-  } catch (err) {
-    logger.error('❌ pdf-filler error:', err);
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-app.post('/api/skills/run', async (req, res) => {
-  if (!_bearerAuth(req, res)) return;
-  try {
-    const result = await require('./services/skills/run-skill').handle(req.body || {});
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
 // ── Agents runner — dispara subagent do Claude Code via Task tool ──
 // Diferente de /skills/run: invoca um agente .md em ~/.claude/agents/ usando
 // prompt instrutivo + allowedTools:['Task']. Whitelist em services/agents/run-agent.js.
