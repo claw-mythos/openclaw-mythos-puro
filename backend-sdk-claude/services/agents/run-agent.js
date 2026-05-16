@@ -23,20 +23,13 @@ const { query } = require('../../claude-query');
 
 const AGENTS_PATH = process.env.CLAUDE_AGENTS_PATH || path.join(process.env.HOME || '', '.claude', 'agents');
 
-// Agentes que escrevem código / mexem em git / são autônomos demais — bloqueados
-// no HTTP por default. Continuam invocáveis via Task tool dentro do Claude Code CLI.
-// Estender via env: AGENTS_HTTP_DENY="agent-x,agent-y"
-const BUILTIN_HTTP_DENY = new Set([
-  'puro-executor',          // escreve código
-  'puro-code-fixer',        // edita arquivos
-  'puro-debugger',          // edita arquivos
-  'puro-debug-session-manager',
-  'puro-nyquist-auditor',   // escreve testes
-  'puro-security-auditor',  // edita arquivos
-]);
-const ENV_HTTP_DENY = (process.env.AGENTS_HTTP_DENY || '')
-  .split(',').map(s => s.trim()).filter(Boolean);
-const HTTP_DENY = new Set([...BUILTIN_HTTP_DENY, ...ENV_HTTP_DENY]);
+// Denylist para bloquear agentes específicos via HTTP (eles continuam invocáveis
+// via Task tool dentro do Claude Code CLI). Configure via env:
+//   AGENTS_HTTP_DENY="agent-x,agent-y"
+// Não há denylist embutida — adicione conforme necessário no deployment.
+const HTTP_DENY = new Set(
+  (process.env.AGENTS_HTTP_DENY || '').split(',').map(s => s.trim()).filter(Boolean)
+);
 
 // Descobre agentes lendo o frontmatter name: de cada .md em AGENTS_PATH
 function loadAgents() {

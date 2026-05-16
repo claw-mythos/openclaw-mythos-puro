@@ -79,7 +79,7 @@ const tasks = new Map();
 const queue = [];
 let activeWorkers = 0;                                            // contador de workers em execução
 const MAX_WORKERS = parseInt(process.env.MAX_CLAUDE_PROCESSES || '4');
-let _io = null;          // Socket.IO ref (setado pelo startAutonomous)
+let _io = null;          // Socket.IO ref — sem setter público hoje (mode autônomo foi removido); fica null até alguém reintroduzir setter
 let _cooldownUntil = 0;  // timestamp até quando pausar (rate limit)
 let _retryTimer = null;  // timer para retomar fila após cooldown
 let _saveTimer = null;   // debounce do _save (evita race entre workers)
@@ -489,142 +489,11 @@ async function _runTask(task, io) {
     });
     console.log(`✅ Task ${task.id} ${task.status} (${((task.finishedAt - task.startedAt) / 1000).toFixed(1)}s)`);
 
-    if (task.status === 'done' && task.source === 'cron') {
-      const entry = {
-        taskId: task.id,
-        desc: task.prompt.substring(0, 120),
-        cost: task.cost,
-        duration: task.finishedAt - task.startedAt,
-      };
-      const changedFiles = _getChangedFiles(task.workspace);
-      if (changedFiles.length > 0) entry.changes = changedFiles;
-      memory.append('changelog', entry, 100);
-
-      if (task.prompt !== '/auto-commit-pr') {
-        _checkAndCommit(task.workspace);
-      }
-    }
   }
-}
-
-function _getChangedFiles(workspace) {
-  try {
-    const { execSync } = require('child_process');
-    const output = execSync('git diff --name-only HEAD 2>/dev/null || git diff --name-only', {
-      cwd: workspace, encoding: 'utf8', timeout: 5000,
-    }).trim();
-    if (!output) return [];
-    return output.split('\n').filter(Boolean).slice(0, 20);
-  } catch { return []; }
-}
-
-function _checkAndCommit(workspace) {
-  try {
-    const { execSync } = require('child_process');
-    const changes = execSync('git status --porcelain', { cwd: workspace, encoding: 'utf8' }).trim();
-    if (changes) {
-      console.log(`📝 Mudanças detectadas após task autônoma — agendando auto-commit-pr`);
-      createTask({
-        prompt: '/auto-commit-pr',
-        workspace,
-        tags: ['autonomous', 'auto-pr'],
-        source: 'cron',
-        maxTurns: 10,
-      });
-    }
-  } catch { /* sem git ou erro — ignora */ }
 }
 
 function _emit(io, taskId, event, data) {
   if (io) io.emit(event, data);
-}
-
-// ── Modo autônomo ──
-
-let autonomousTimer = null;
-
-function startAutonomous(io, intervalMs) {
-  if (autonomousTimer) return;
-  _io = io; // Guarda ref do Socket.IO
-  console.log(`🤖 Autonomous mode: ciclo a cada ${intervalMs / 60000}min`);
-  _scheduleAutonomousTask();
-  autonomousTimer = setInterval(() => {
-    _scheduleAutonomousTask();
-  }, intervalMs);
-}
-
-function stopAutonomous() {
-  if (autonomousTimer) {
-    clearInterval(autonomousTimer);
-    autonomousTimer = null;
-    console.log('🤖 Autonomous mode stopped');
-  }
-}
-
-const LOGS_PATH = process.env.OPENCLAW_LOGS || '/Users/2a/.openclaw/logs';
-const AGENTS_PATH = process.env.CLAUDE_AGENTS_PATH || '/Users/2a/.claude/agents';
-
-const SELF_MISSIONS = [
-  // Diagnóstico
-  '/self-review',
-  '/analyze-logs',
-  // Resolução de débitos (a cada 3 ciclos)
-  'Leia data/memory/debts.json. Escolha o debt aberto de maior severidade. Corrija-o editando o arquivo indicado. Após corrigir, atualize debts.json mudando status para "resolved" e resolvedAt com Date.now(). Teste com node --check.',
-  // Avaliação de skills
-  '/eval-skills',
-  // Diagnóstico profundo
-  '/self-review',
-  `Leia os logs em ${LOGS_PATH}/ e verifique se as skills cobrem os padrões de erro encontrados. Sugira novas skills se necessário.`,
-  // Mais resolução de débitos
-  'Leia data/memory/debts.json. Se todos os debts estão "resolved", analise o código e adicione NOVOS débitos técnicos que encontrar (com id, desc, file, severity, status:"open"). Se houver debts open, resolva o de maior severidade.',
-  // Melhoria contínua
-  '/self-improve',
-  '/analyze-logs',
-  `Verifique os agentes em ${AGENTS_PATH}/. Liste os mais relevantes para melhorar o openclaw-mythos.`,
-];
-
-const OPENCLAW_MISSIONS = [
-  'Analise pkg/providers/ do openclaw. Identifique providers com padrões inconsistentes. Lista priorizada.',
-  'Leia ROADMAP.md e compare com o código atual. Liste: implementado, parcial, pendente.',
-  '/analyze-logs',
-  `Leia os logs em ${LOGS_PATH}/ e sugira melhorias concretas no código Go para reduzir os erros encontrados.`,
-];
-
-let missionIndex = 0;
-const TOTAL_MISSIONS = SELF_MISSIONS.length + OPENCLAW_MISSIONS.length;
-
-function _scheduleAutonomousTask() {
-  // Cooldown ativo — pula ciclo
-  if (_cooldownUntil > Date.now()) {
-    const waitMin = Math.ceil((_cooldownUntil - Date.now()) / 60000);
-    console.log(`⏸️  [mission skip] Rate limit cooldown — ${waitMin}min restantes`);
-    return;
-  }
-
-  const workspace = process.env.OPENCLAW_WORKSPACE || path.join(__dirname, '..');
-  const goPath = process.env.OPENCLAW_GOPATH;
-  let prompt, taskWorkspace, tags;
-
-  if (missionIndex % 3 === 0 || !goPath || !require('fs').existsSync(goPath)) {
-    prompt = SELF_MISSIONS[missionIndex % SELF_MISSIONS.length];
-    taskWorkspace = workspace;
-    tags = ['autonomous', 'self-review'];
-  } else {
-    prompt = OPENCLAW_MISSIONS[missionIndex % OPENCLAW_MISSIONS.length];
-    taskWorkspace = goPath;
-    tags = ['autonomous', 'openclaw-analysis'];
-  }
-
-  missionIndex = (missionIndex + 1) % TOTAL_MISSIONS;
-
-  console.log(`🤖 [mission ${missionIndex}] ${prompt.substring(0, 70)}`);
-  createTask({
-    prompt,
-    workspace: taskWorkspace,
-    tags,
-    source: 'cron',
-    maxTurns: 15,
-  });
 }
 
 module.exports = {
@@ -632,7 +501,5 @@ module.exports = {
   getTask,
   listTasks,
   cancelTask,
-  startAutonomous,
-  stopAutonomous,
   _drainQueue,
 };

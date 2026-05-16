@@ -169,12 +169,6 @@ async function initializeSystem() {
 // Initialize on startup
 initializeSystem();
 
-// Autonomous mode
-const AUTONOMOUS_INTERVAL = parseInt(process.env.AUTONOMOUS_INTERVAL_MIN || '0') * 60 * 1000;
-if (AUTONOMOUS_INTERVAL > 0) {
-  taskRunner.startAutonomous(io, AUTONOMOUS_INTERVAL);
-}
-
 // Helper functions for processing step messages
 function getStepMessage(stepType, msg) {
   switch (stepType) {
@@ -702,21 +696,6 @@ app.post('/api/tasks/:id/retry', (req, res) => {
     source: original.source,
   });
   res.json({ success: true, task: _sanitizeTask(task) });
-});
-
-// POST /api/autonomous/start — iniciar modo autônomo
-app.post('/api/autonomous/start', express.json(), (req, res) => {
-  if (!_bearerAuth(req, res)) return;
-  const intervalMin = parseInt(req.body.intervalMin || 60);
-  taskRunner.startAutonomous(io, intervalMin * 60 * 1000);
-  res.json({ success: true, intervalMin });
-});
-
-// POST /api/autonomous/stop — parar modo autônomo
-app.post('/api/autonomous/stop', (req, res) => {
-  if (!_bearerAuth(req, res)) return;
-  taskRunner.stopAutonomous();
-  res.json({ success: true });
 });
 
 function _bearerAuth(req, res) {
