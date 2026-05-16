@@ -168,6 +168,24 @@ async function* _spawnQuery({ prompt, options }) {
     if (resolve) { resolve(); resolve = null; }
   });
 
+  // Sem este handler, falhas de spawn (ENOENT quando NODE_BIN não está no PATH,
+  // EACCES, etc) emitem 'error' não-tratado no ChildProcess e derrubam o
+  // processo inteiro do Node. Convertemos pra evento sintético de result/error
+  // pra que o caller (for await) consuma normalmente.
+  child.on('error', (err) => {
+    if (lineQueue.length === 0) {
+      lineQueue.push({
+        type: 'result',
+        subtype: 'error',
+        is_error: true,
+        error: `spawn failed: ${err.message}`,
+        result: `spawn failed: ${err.message}`,
+      });
+    }
+    done = true;
+    if (resolve) { resolve(); resolve = null; }
+  });
+
   // Yield messages as they arrive
   while (true) {
     while (lineQueue.length > 0) {
