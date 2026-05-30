@@ -1,0 +1,35 @@
+# ── SDK (backend-sdk-claude) — peça de motor lacrada e genérica ──
+# REGRA: nada específico de instância pode morar dentro desta pasta.
+# Os 4 itens de instância ficam FORA do versionamento (ver CLAUDE.md "Modelo de uso").
+
+# 1) Segredos — NUNCA versionar
+.env
+.env.local
+.env.*.local
+.secrets
+.secrets/
+
+# 2) Estado vivo da instância (a pasta existe, o conteúdo não)
+data/*
+!data/.gitkeep
+
+# 3) Workspaces de grupo — populados pela bridge da instância
+grupos/*
+!grupos/.gitkeep
+
+# 4) Dependências — regeneradas por `npm ci`
+node_modules/
+
+# Outros artefatos de runtime / local
+uploads/
+symlink/
+coverage/
+.jest-cache/
+*.log
+*.png
+
+# Editores / SO
+.DS_Store
+.idea/
+.vscode/
+*.swp

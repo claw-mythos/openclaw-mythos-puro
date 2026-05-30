@@ -11,6 +11,7 @@ const { query, isThrottled } = require('./claude-query');
 const SessionContextManager = require('./sessionContext');
 const HealthChecker = require('./services/health-checker');
 const taskRunner = require('./services/task-runner');
+const { loadBridges } = require('./services/bridge-loader');
 
 
 // Logger com níveis — TRACE só aparece em development
@@ -1173,6 +1174,21 @@ Please provide a thorough analysis of this file.`;
     console.log('Client disconnected:', socket.id);
     activeConnections.delete(socket.id);
   });
+});
+
+// Carregar bridges (cliente-específicas) ANTES de aceitar conexões.
+// Cada bridge-*/index.js exporta init(ctx) e registra rotas/crons via ctx.register*.
+// Falha em uma bridge é isolada: motor sobe sem ela, log de erro fica no journal.
+loadBridges({
+  app, io, logger,
+  taskRunner,
+  sessionContextManager,
+  healthChecker,
+  claudeQuery: { query, isThrottled },
+}).then(({ loaded, totalCrons }) => {
+  logger.info(`[boot] ${loaded.length} bridge(s) carregada(s), ${totalCrons || 0} cron(s) total`);
+}).catch(err => {
+  logger.error('[boot] loadBridges fatal:', err && (err.stack || err.message));
 });
 
 // Start server

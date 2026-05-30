@@ -65,6 +65,45 @@ class SessionContextManager {
     return contextPrompt;
   }
 
+  // Obter resumo do contexto
+  getContextSummary(sessionId) {
+    const context = this.sessionContexts.get(sessionId);
+
+    if (!context) {
+      return null;
+    }
+
+    // Extrair informações importantes do contexto
+    const summary = {
+      messageCount: context.messages.length,
+      sessionAge: Date.now() - context.createdAt,
+      lastActivity: Date.now() - context.lastActivity
+    };
+
+    // Tentar extrair nome do usuário se mencionado
+    const userNameMatch = context.messages.find(msg =>
+      msg.content.match(/meu nome é (\w+)/i) ||
+      msg.content.match(/me chamo (\w+)/i) ||
+      msg.content.match(/sou o (\w+)/i) ||
+      msg.content.match(/sou a (\w+)/i)
+    );
+
+    if (userNameMatch) {
+      const match = userNameMatch.content.match(/(?:meu nome é|me chamo|sou o|sou a) (\w+)/i);
+      if (match) {
+        summary.userName = match[1];
+      }
+    }
+
+    return summary;
+  }
+
+  // Limpar contexto de uma sessão
+  clearContext(sessionId) {
+    this.sessionContexts.delete(sessionId);
+    console.log(`🧹 [CONTEXT] Cleared context for session ${sessionId.slice(0, 8)}`);
+  }
+
   // Limpar contextos antigos (mais de 2 horas sem atividade)
   cleanOldContexts() {
     const twoHoursAgo = Date.now() - 7200000;
